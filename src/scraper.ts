@@ -58,34 +58,68 @@ async function createBrowserContext(): Promise<{
 
   const context = await chromium.launchPersistentContext(BROWSER_DATA_DIR, {
     headless: config.headless,
+    channel: config.headless ? undefined : "chrome",
     args: [
       "--disable-blink-features=AutomationControlled",
       "--no-sandbox",
       "--disable-dev-shm-usage",
+      "--disable-setuid-sandbox",
+      "--disable-infobars",
+      "--window-size=1920,1080",
+      "--disable-gpu",
     ],
     userAgent:
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    viewport: { width: 1280, height: 720 },
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+    viewport: { width: 1920, height: 1080 },
     locale: "en-GB",
     ignoreHTTPSErrors: true,
+    bypassCSP: true,
   });
 
   await context.addInitScript(() => {
+    // Hide webdriver flag
     Object.defineProperty(navigator, "webdriver", { get: () => undefined });
-    (window as any).chrome = { runtime: {}, loadTimes: () => ({}), csi: () => ({}) };
-    Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
+    // Fake chrome object
+    (window as any).chrome = {
+      runtime: {},
+      loadTimes: () => ({}),
+      csi: () => ({}),
+      app: { isInstalled: false, InstallState: { DISABLED: "disabled", INSTALLED: "installed", NOT_INSTALLED: "not_installed" }, RunningState: { CANNOT_RUN: "cannot_run", READY_TO_RUN: "ready_to_run", RUNNING: "running" } },
+    };
+    // Fake plugins
+    Object.defineProperty(navigator, "plugins", {
+      get: () => [
+        { name: "Chrome PDF Plugin", filename: "internal-pdf-viewer" },
+        { name: "Chrome PDF Viewer", filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai" },
+        { name: "Native Client", filename: "internal-nacl-plugin" },
+      ],
+    });
     Object.defineProperty(navigator, "languages", { get: () => ["en-GB", "en-US", "en"] });
+    // Override permissions query
+    const originalQuery = window.navigator.permissions.query;
+    window.navigator.permissions.query = (parameters: any) =>
+      parameters.name === "notifications"
+        ? Promise.resolve({ state: Notification.permission } as PermissionStatus)
+        : originalQuery(parameters);
   });
 
   return { context, close: () => context.close() };
 }
 
-async function waitForRealContent(page: Page, timeout = 30000): Promise<boolean> {
+async function waitForRealContent(page: Page, timeout = 45000): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeout) {
     const title = await page.title();
     if (title === "Access Denied" || title === "Forbidden") {
-      return false;
+      // Wait a bit and retry once - sometimes initial block clears
+      console.log("  Got Access Denied, waiting 5s before giving up...");
+      await page.waitForTimeout(5000);
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(3000);
+      const retryTitle = await page.title();
+      if (retryTitle === "Access Denied" || retryTitle === "Forbidden") {
+        return false;
+      }
     }
     if (title.trim().length > 1 && !title.includes("\u00a0")) {
       await page.waitForTimeout(2000);
