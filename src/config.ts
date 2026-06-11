@@ -85,24 +85,26 @@ const config: AppConfig = {
   enabledStats: [
     "totalShots",
     "shotsOnTarget",
-    // Voeg hier meer toe als je wilt, bijv:
-    // "corners",
-    // "possession",
-    // "fouls",
-    // "yellowCards",
+    "possession",
+    "corners",
+    "fouls",
+    "yellowCards",
+    "redCards",
+    "offsides",
+    "saves",
   ] as StatType[],
 
   // ---- WK 2026 toernooi ----
   tournamentUrl:
-    "https://optaplayerstats.statsperform.com/en_GB/soccer/fifa-world-cup-2026-canada-mexico-usa/873cbl9cd9butm4air0mugxzo",
-  tournamentId: "873cbl9cd9butm4air0mugxzo",
+    "https://www.espn.com/soccer/schedule/_/league/fifa.world",
+  tournamentId: "fifa.world",
   tournamentName: "FIFA World Cup 2026",
 
   // ---- Server instellingen ----
   port: parseInt(process.env.PORT || "3333", 10),
 
-  // ---- Browser instellingen ----
-  headless: process.env.HEADLESS !== "false",
+  // ---- Browser instellingen (niet meer nodig, maar bewaard voor compatibiliteit) ----
+  headless: true,
 };
 
 export default config;
