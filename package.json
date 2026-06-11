@@ -19,10 +19,7 @@
   "description": "WK 2026 Stats Dashboard - Scrape Opta statistieken",
   "dependencies": {
     "express": "^5.2.1",
-    "playwright": "^1.60.0",
-    "puppeteer": "^25.1.0",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "playwright": "^1.60.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
