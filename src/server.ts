@@ -1,7 +1,7 @@
 import express from "express";
 import * as path from "path";
 import config from "./config";
-import { fetchAllMatches } from "./scraper";
+import { fetchAllMatches, refreshLiveMatches } from "./scraper";
 import { STAT_LABELS, STAT_LABELS_NL, ScrapedData } from "./types";
 
 const app = express();
@@ -87,7 +87,7 @@ app.get("/api/stats", async (_req, res) => {
 
 /**
  * POST /api/refresh
- * Forceer een verse ophaling vanuit de ESPN API (invalideert cache).
+ * Forceer een volledige ophaling vanuit de ESPN API (invalideert cache).
  */
 app.post("/api/refresh", async (_req, res) => {
   try {
@@ -95,6 +95,27 @@ app.post("/api/refresh", async (_req, res) => {
     res.json({ success: true, matchCount: data.matches.length });
   } catch (error: any) {
     console.error("Refresh failed:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/refresh-live
+ * Ververs alleen live/actieve wedstrijden (veel sneller).
+ * Hergebruikt cached data voor afgelopen en toekomstige wedstrijden.
+ */
+app.post("/api/refresh-live", async (_req, res) => {
+  try {
+    // Gebruik bestaande cache als basis, of doe een volledige fetch
+    const existing = cache?.data || (await fetchAllMatches());
+    const data = await refreshLiveMatches(existing);
+    cache = { data, timestamp: Date.now() };
+    const liveCount = data.matches.filter(
+      (m) => m.status !== "Upcoming" && m.status !== "FT"
+    ).length;
+    res.json({ success: true, matchCount: data.matches.length, liveCount });
+  } catch (error: any) {
+    console.error("Live refresh failed:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

@@ -340,3 +340,65 @@ export async function fetchAllMatches(): Promise<ScrapedData> {
     matches,
   };
 }
+
+/**
+ * Ververs alleen live/actieve wedstrijden.
+ * Pakt bestaande cached data en update alleen de matches
+ * die live zijn of vandaag gespeeld worden.
+ */
+export async function refreshLiveMatches(
+  existing: ScrapedData
+): Promise<ScrapedData> {
+  console.log("Refreshing live matches only...");
+
+  const events = await fetchScoreboard();
+  const updatedMatches = [...existing.matches];
+  let refreshed = 0;
+
+  for (const event of events) {
+    const fresh = parseBasicMatch(event);
+    if (!fresh) continue;
+
+    const isLiveOrRecent =
+      fresh.status !== "Upcoming" && fresh.status !== "FT";
+    // Ook FT wedstrijden van vandaag verversen (score kan net veranderd zijn)
+    const todayStr = new Date().toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    const isToday = fresh.date === todayStr;
+
+    if (isLiveOrRecent || isToday) {
+      await enrichWithStats(fresh);
+      refreshed++;
+
+      // Bestaande match updaten of toevoegen
+      const idx = updatedMatches.findIndex((m) => m.matchId === fresh.matchId);
+      if (idx >= 0) {
+        updatedMatches[idx] = fresh;
+      } else {
+        updatedMatches.push(fresh);
+      }
+    } else {
+      // Niet-live match: alleen basis-info updaten (score/status)
+      // als die nog niet in de cache zit
+      const idx = updatedMatches.findIndex((m) => m.matchId === fresh.matchId);
+      if (idx < 0) {
+        updatedMatches.push(fresh);
+      } else if (updatedMatches[idx].status === "Upcoming" && fresh.status !== "Upcoming") {
+        // Was upcoming, is nu gespeeld -> vol ophalen
+        await enrichWithStats(fresh);
+        updatedMatches[idx] = fresh;
+        refreshed++;
+      }
+    }
+  }
+
+  console.log(`Refreshed ${refreshed} live/today matches`);
+
+  return {
+    lastUpdated: new Date().toISOString(),
+    matches: updatedMatches,
+  };
+}
