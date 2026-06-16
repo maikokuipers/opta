@@ -18,7 +18,8 @@
   "license": "ISC",
   "description": "WK 2026 Stats Dashboard - Scrape Opta statistieken",
   "dependencies": {
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "playwright": "^1.61.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",

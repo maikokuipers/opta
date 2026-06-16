@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import config from "./config";
-import { MatchData, ScrapedData, StatType } from "./types";
+import { MatchData, PlayerStat, ScrapedData, StatType } from "./types";
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 const DATA_FILE = path.join(DATA_DIR, "stats.json");
@@ -23,6 +23,15 @@ const ESPN_STAT_MAP: Record<string, StatType> = {
   saves: "saves",
 };
 
+/**
+ * ESPN stat namen op speler-niveau die we willen extraheren.
+ * Deze komen uit de rosters[].roster[].stats[] array.
+ */
+const ESPN_PLAYER_STAT_MAP: Record<string, StatType> = {
+  totalShots: "totalShots",
+  shotsOnTarget: "shotsOnTarget",
+};
+
 // ==============================
 //  ESPN API Fetching
 // ==============================
@@ -38,12 +47,52 @@ async function fetchJSON(url: string): Promise<any> {
 
 /**
  * Haal alle wedstrijden op van het ESPN scoreboard.
- * Dit geeft alle WK 2026 wedstrijden met scores.
+ * Fetcht meerdere dagen om zowel gespeelde als toekomstige wedstrijden te dekken.
  */
 async function fetchScoreboard(): Promise<any[]> {
-  // Haal meerdere datumranges op om alle wedstrijden te dekken
-  const data = await fetchJSON(`${ESPN_BASE}/scoreboard`);
-  return data.events || [];
+  const allEvents: any[] = [];
+  const seenIds = new Set<string>();
+
+  // Tournament start: 11 juni 2026, eindigt 19 juli 2026
+  const tournamentStart = new Date("2026-06-11");
+  const tournamentEnd = new Date("2026-07-19");
+  const today = new Date();
+
+  // Fetch van start tot vandaag + 7 dagen vooruit (of tot einde toernooi)
+  const fetchEnd = new Date(Math.min(
+    today.getTime() + 7 * 24 * 60 * 60 * 1000,
+    tournamentEnd.getTime()
+  ));
+  const fetchStart = new Date(Math.max(tournamentStart.getTime(), today.getTime() - 60 * 24 * 60 * 60 * 1000));
+
+  // Genereer datums in YYYYMMDD formaat
+  const dates: string[] = [];
+  const current = new Date(fetchStart);
+  while (current <= fetchEnd) {
+    const y = current.getFullYear();
+    const m = String(current.getMonth() + 1).padStart(2, "0");
+    const d = String(current.getDate()).padStart(2, "0");
+    dates.push(`${y}${m}${d}`);
+    current.setDate(current.getDate() + 1);
+  }
+
+  console.log(`Fetching scoreboard for ${dates.length} days (${dates[0]} - ${dates[dates.length - 1]})`);
+
+  for (const date of dates) {
+    try {
+      const data = await fetchJSON(`${ESPN_BASE}/scoreboard?dates=${date}`);
+      for (const event of data.events || []) {
+        if (!seenIds.has(event.id)) {
+          seenIds.add(event.id);
+          allEvents.push(event);
+        }
+      }
+    } catch (err: any) {
+      console.log(`  Skipping date ${date}: ${err.message}`);
+    }
+  }
+
+  return allEvents;
 }
 
 /**
@@ -139,6 +188,44 @@ function parseBasicMatch(event: any): MatchData | null {
 }
 
 /**
+ * Parse per-speler stats uit een ESPN roster.
+ * Retourneert een map van StatType -> gesorteerde lijst van spelers met waarde > 0.
+ */
+function parsePlayerStats(
+  rosterPlayers: any[]
+): Partial<Record<StatType, PlayerStat[]>> {
+  const result: Partial<Record<StatType, PlayerStat[]>> = {};
+
+  for (const player of rosterPlayers) {
+    const name: string = player.athlete?.displayName || "";
+    if (!name) continue;
+
+    const playerStats: Record<string, number> = {};
+    for (const s of player.stats || []) {
+      playerStats[s.name] = s.value ?? 0;
+    }
+
+    // Map relevante stats
+    for (const [espnName, statType] of Object.entries(ESPN_PLAYER_STAT_MAP)) {
+      const val = playerStats[espnName];
+      if (val && val > 0) {
+        if (!result[statType]) {
+          result[statType] = [];
+        }
+        result[statType]!.push({ name, value: val });
+      }
+    }
+  }
+
+  // Sorteer elke stat-lijst op waarde (hoog -> laag)
+  for (const statType of Object.keys(result) as StatType[]) {
+    result[statType]!.sort((a, b) => b.value - a.value);
+  }
+
+  return result;
+}
+
+/**
  * Voeg gedetailleerde stats toe aan een match via de summary endpoint.
  */
 async function enrichWithStats(match: MatchData): Promise<MatchData> {
@@ -146,8 +233,8 @@ async function enrichWithStats(match: MatchData): Promise<MatchData> {
     const summary = await fetchMatchSummary(match.matchId);
     const boxscoreTeams = summary.boxscore?.teams || [];
 
+    // ---- Team-totaal stats ----
     if (boxscoreTeams.length >= 2) {
-      // ESPN boxscore teams volgorde kan verschillen, match op naam
       for (const espnTeam of boxscoreTeams) {
         const teamName = espnTeam.team?.displayName || "";
         const stats = parseTeamStats(espnTeam);
@@ -159,7 +246,7 @@ async function enrichWithStats(match: MatchData): Promise<MatchData> {
         }
       }
 
-      // Als matching op naam niet lukte, gebruik volgorde
+      // Fallback op volgorde
       if (Object.keys(match.homeTeam.stats).length === 0 && boxscoreTeams[0]) {
         match.homeTeam.stats = parseTeamStats(boxscoreTeams[0]);
       }
@@ -168,7 +255,31 @@ async function enrichWithStats(match: MatchData): Promise<MatchData> {
       }
     }
 
-    // Log de stats
+    // ---- Per-speler stats uit rosters ----
+    const rosters = summary.rosters || [];
+    for (const roster of rosters) {
+      const teamName = roster.team?.displayName || "";
+      const rosterPlayers = roster.roster || [];
+      const players = parsePlayerStats(rosterPlayers);
+
+      if (teamName === match.homeTeam.teamName) {
+        match.homeTeam.players = players;
+      } else if (teamName === match.awayTeam.teamName) {
+        match.awayTeam.players = players;
+      }
+    }
+
+    // Fallback op volgorde als naam-matching niet lukte
+    if (
+      Object.keys(match.homeTeam.players).length === 0 &&
+      Object.keys(match.awayTeam.players).length === 0 &&
+      rosters.length >= 2
+    ) {
+      match.homeTeam.players = parsePlayerStats(rosters[0].roster || []);
+      match.awayTeam.players = parsePlayerStats(rosters[1].roster || []);
+    }
+
+    // Log
     console.log(
       `  ${match.homeTeam.teamName} ${match.score} ${match.awayTeam.teamName} [${match.status}]`
     );
@@ -177,6 +288,19 @@ async function enrichWithStats(match: MatchData): Promise<MatchData> {
       const away = match.awayTeam.stats[stat] || "-";
       if (home !== "-" || away !== "-") {
         console.log(`    ${stat}: ${home} - ${away}`);
+      }
+      // Log spelers
+      const homePlayers = match.homeTeam.players[stat] || [];
+      const awayPlayers = match.awayTeam.players[stat] || [];
+      if (homePlayers.length > 0) {
+        console.log(
+          `      Home: ${homePlayers.map((p) => `${p.name} (${p.value})`).join(", ")}`
+        );
+      }
+      if (awayPlayers.length > 0) {
+        console.log(
+          `      Away: ${awayPlayers.map((p) => `${p.name} (${p.value})`).join(", ")}`
+        );
       }
     }
   } catch (err: any) {
@@ -314,7 +438,7 @@ export async function scrapeSingleMatch(input: string): Promise<MatchData | null
       competition: config.tournamentName,
     };
 
-    // Stats toevoegen
+    // Team stats toevoegen
     const boxscoreTeams = summary.boxscore?.teams || [];
     for (const espnTeam of boxscoreTeams) {
       const teamName = espnTeam.team?.displayName || "";
@@ -324,6 +448,19 @@ export async function scrapeSingleMatch(input: string): Promise<MatchData | null
         match.homeTeam.stats = stats;
       } else if (teamName === match.awayTeam.teamName) {
         match.awayTeam.stats = stats;
+      }
+    }
+
+    // Per-speler stats uit rosters
+    const rosters = summary.rosters || [];
+    for (const roster of rosters) {
+      const teamName = roster.team?.displayName || "";
+      const players = parsePlayerStats(roster.roster || []);
+
+      if (teamName === match.homeTeam.teamName) {
+        match.homeTeam.players = players;
+      } else if (teamName === match.awayTeam.teamName) {
+        match.awayTeam.players = players;
       }
     }
 

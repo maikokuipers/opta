@@ -381,47 +381,84 @@
       white-space: nowrap;
     }
 
-    /* Player tags */
-    .player-tags {
+    /* Player breakdown */
+    .player-breakdown {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0 2rem;
+      padding: 0.25rem 1.25rem 0.6rem;
+    }
+
+    .player-list {
       display: flex;
-      flex-wrap: wrap;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .player-list.home {
+      align-items: flex-end;
+    }
+
+    .player-list.away {
+      align-items: flex-start;
+    }
+
+    .player-entry {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+      line-height: 1;
+    }
+
+    .player-list.home .player-entry {
+      flex-direction: row-reverse;
+    }
+
+    .player-name {
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .player-bar-wrap {
+      display: flex;
+      align-items: center;
       gap: 0.3rem;
     }
 
-    .player-tags.home {
-      justify-content: flex-end;
+    .player-list.home .player-bar-wrap {
+      flex-direction: row-reverse;
     }
 
-    .player-tags.away {
-      justify-content: flex-start;
-    }
-
-    .player-tag {
-      font-size: 0.65rem;
-      padding: 0.1rem 0.4rem;
+    .player-bar {
+      height: 6px;
       border-radius: 3px;
-      font-weight: 500;
-      white-space: nowrap;
-      line-height: 1.4;
+      min-width: 4px;
     }
 
-    .player-tag.home {
-      background: rgba(59, 130, 246, 0.15);
-      color: rgba(147, 197, 253, 0.9);
+    .player-list.home .player-bar {
+      background: var(--home-color);
     }
 
-    .player-tag.away {
-      background: rgba(249, 115, 22, 0.15);
-      color: rgba(253, 186, 116, 0.9);
+    .player-list.away .player-bar {
+      background: var(--away-color);
     }
 
-    .player-tag .player-count {
+    .player-val {
       font-weight: 700;
-      opacity: 0.8;
+      font-size: 0.75rem;
+      font-variant-numeric: tabular-nums;
+      min-width: 0.8rem;
     }
 
-    .player-tags-spacer {
-      /* leeg midden-kolom */
+    .player-list.home .player-val {
+      color: var(--home-color);
+      text-align: left;
+    }
+
+    .player-list.away .player-val {
+      color: var(--away-color);
+      text-align: right;
     }
 
     /* Add match form */
@@ -765,19 +802,30 @@
             const homeHigher = homeNum > awayNum ? "higher" : "";
             const awayHigher = awayNum > homeNum ? "higher" : "";
 
-            // Speler-tags
+            // Speler breakdown
             const homePlayers = (match.homeTeam.players && match.homeTeam.players[statType]) || [];
             const awayPlayers = (match.awayTeam.players && match.awayTeam.players[statType]) || [];
-
-            const homePlayerTags = homePlayers
-              .map((p) => `<span class="player-tag home">${p.name} <span class="player-count">${p.value}</span></span>`)
-              .join("");
-
-            const awayPlayerTags = awayPlayers
-              .map((p) => `<span class="player-tag away">${p.name} <span class="player-count">${p.value}</span></span>`)
-              .join("");
-
             const hasPlayers = homePlayers.length > 0 || awayPlayers.length > 0;
+
+            // Bereken max waarde voor bar-breedte schalings
+            const allVals = [...homePlayers, ...awayPlayers].map((p) => p.value);
+            const maxVal = Math.max(...allVals, 1);
+
+            function renderPlayerList(players, side) {
+              if (players.length === 0) return '<div class="player-list ' + side + '"></div>';
+              return `<div class="player-list ${side}">
+                ${players.map((p) => {
+                  const barWidth = Math.max(Math.round((p.value / maxVal) * 60), 4);
+                  return `<div class="player-entry">
+                    <span class="player-name">${p.name}</span>
+                    <span class="player-bar-wrap">
+                      <span class="player-bar" style="width:${barWidth}px"></span>
+                      <span class="player-val">${p.value}</span>
+                    </span>
+                  </div>`;
+                }).join("")}
+              </div>`;
+            }
 
             return `
               <div class="stat-block">
@@ -787,10 +835,9 @@
                   <div class="stat-value away ${awayHigher}">${awayVal}</div>
                 </div>
                 ${hasPlayers ? `
-                <div class="stat-players-row">
-                  <div class="player-tags home">${homePlayerTags}</div>
-                  <div class="player-tags-spacer"></div>
-                  <div class="player-tags away">${awayPlayerTags}</div>
+                <div class="player-breakdown">
+                  ${renderPlayerList(homePlayers, 'home')}
+                  ${renderPlayerList(awayPlayers, 'away')}
                 </div>` : ''}
               </div>
             `;
