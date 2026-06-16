@@ -1,8 +1,8 @@
 import express from "express";
 import * as path from "path";
 import config from "./config";
-import { loadData, scrapeAll, scrapeSingleMatch } from "./scraper";
-import { STAT_LABELS, STAT_LABELS_NL } from "./types";
+import { fetchAllMatches } from "./scraper";
+import { STAT_LABELS, STAT_LABELS_NL, ScrapedData } from "./types";
 
 const app = express();
 
@@ -10,70 +10,97 @@ const app = express();
 app.use(express.static(path.join(__dirname, "..", "public")));
 app.use(express.json());
 
+// ==============================
+//  In-memory cache
+// ==============================
+
+const CACHE_TTL_MS = 60 * 1000; // 60 seconden
+
+let cache: {
+  data: ScrapedData;
+  timestamp: number;
+} | null = null;
+
+async function getCachedStats(forceRefresh = false): Promise<ScrapedData> {
+  const now = Date.now();
+
+  if (!forceRefresh && cache && now - cache.timestamp < CACHE_TTL_MS) {
+    return cache.data;
+  }
+
+  console.log(
+    forceRefresh
+      ? "Force refresh: fetching from ESPN API..."
+      : "Cache expired: fetching from ESPN API..."
+  );
+
+  const data = await fetchAllMatches();
+
+  cache = { data, timestamp: Date.now() };
+  return data;
+}
+
+// ==============================
+//  Routes
+// ==============================
+
 /**
  * GET /api/stats
- * Haal alle opgeslagen statistieken op.
- * Filtering op gevolgde teams gebeurt client-side.
+ * Haalt live data op via ESPN API (met 60s in-memory cache).
  */
-app.get("/api/stats", (_req, res) => {
-  const data = loadData();
-  res.json({
-    lastUpdated: data?.lastUpdated || null,
-    matches: data?.matches || [],
-    config: {
-      allTeams: config.allTeams,
-      defaultFollowedTeams: config.defaultFollowedTeams,
-      enabledStats: config.enabledStats,
-      statLabels: STAT_LABELS,
-      statLabelsNL: STAT_LABELS_NL,
-      tournamentName: config.tournamentName,
-    },
-  });
+app.get("/api/stats", async (_req, res) => {
+  try {
+    const data = await getCachedStats();
+    res.json({
+      lastUpdated: data.lastUpdated,
+      matches: data.matches,
+      config: {
+        allTeams: config.allTeams,
+        defaultFollowedTeams: config.defaultFollowedTeams,
+        enabledStats: config.enabledStats,
+        statLabels: STAT_LABELS,
+        statLabelsNL: STAT_LABELS_NL,
+        tournamentName: config.tournamentName,
+      },
+    });
+  } catch (error: any) {
+    console.error("Failed to fetch stats:", error.message);
+    // Fallback naar cache als die er is, ook al is hij verlopen
+    if (cache) {
+      res.json({
+        lastUpdated: cache.data.lastUpdated,
+        matches: cache.data.matches,
+        config: {
+          allTeams: config.allTeams,
+          defaultFollowedTeams: config.defaultFollowedTeams,
+          enabledStats: config.enabledStats,
+          statLabels: STAT_LABELS,
+          statLabelsNL: STAT_LABELS_NL,
+          tournamentName: config.tournamentName,
+        },
+      });
+    } else {
+      res.status(500).json({ error: "Failed to fetch stats from ESPN" });
+    }
+  }
 });
 
 /**
- * POST /api/scrape
- * Start een nieuwe scrape-sessie
+ * POST /api/refresh
+ * Forceer een verse ophaling vanuit de ESPN API (invalideert cache).
  */
-app.post("/api/scrape", async (_req, res) => {
+app.post("/api/refresh", async (_req, res) => {
   try {
-    console.log("Starting scrape...");
-    const data = await scrapeAll();
+    const data = await getCachedStats(true);
     res.json({ success: true, matchCount: data.matches.length });
   } catch (error: any) {
-    console.error("Scrape failed:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * POST /api/scrape-match
- * Scrape een specifieke wedstrijd via URL
- */
-app.post("/api/scrape-match", async (req, res) => {
-  const { url } = req.body;
-  if (!url) {
-    res.status(400).json({ success: false, error: "URL is required" });
-    return;
-  }
-
-  try {
-    console.log(`Scraping single match: ${url}`);
-    const match = await scrapeSingleMatch(url);
-    if (match) {
-      res.json({ success: true, match });
-    } else {
-      res.json({ success: false, error: "Could not extract match data" });
-    }
-  } catch (error: any) {
-    console.error("Scrape match failed:", error);
+    console.error("Refresh failed:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
  * GET /api/config
- * Haal de huidige configuratie op
  */
 app.get("/api/config", (_req, res) => {
   res.json({
@@ -87,14 +114,22 @@ app.get("/api/config", (_req, res) => {
   });
 });
 
-// Start server
-app.listen(config.port, () => {
+// Start server + pre-warm cache
+app.listen(config.port, async () => {
   console.log(`
   ╔═══════════════════════════════════════════╗
-  ║   Opta WK Stats Dashboard                ║
+  ║   WK 2026 Stats Dashboard                ║
   ║   http://localhost:${config.port}                  ║
   ╠═══════════════════════════════════════════╣
-  ║   ${config.allTeams.length} teams | ${config.enabledStats.map((s) => STAT_LABELS[s]).join(", ").padEnd(28)}║
+  ║   Live data via ESPN API (${CACHE_TTL_MS / 1000}s cache)     ║
   ╚═══════════════════════════════════════════╝
   `);
+
+  // Pre-warm de cache zodat de eerste page-load snel is
+  try {
+    await getCachedStats();
+    console.log("Cache pre-warmed successfully.\n");
+  } catch (err: any) {
+    console.log(`Cache pre-warm failed: ${err.message}\n`);
+  }
 });

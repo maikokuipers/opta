@@ -461,45 +461,6 @@
       text-align: right;
     }
 
-    /* Add match form */
-    .add-match {
-      background: var(--surface);
-      border: 1px dashed var(--border);
-      border-radius: 10px;
-      padding: 1.25rem;
-      margin-bottom: 1.25rem;
-    }
-
-    .add-match h3 {
-      font-size: 0.85rem;
-      margin-bottom: 0.75rem;
-      color: var(--text-muted);
-    }
-
-    .add-match-form {
-      display: flex;
-      gap: 0.5rem;
-    }
-
-    .add-match-form input {
-      flex: 1;
-      padding: 0.5rem 0.75rem;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      font-size: 0.85rem;
-    }
-
-    .add-match-form input::placeholder {
-      color: var(--text-muted);
-    }
-
-    .add-match-form input:focus {
-      outline: none;
-      border-color: var(--accent);
-    }
-
     /* Empty state */
     .empty-state {
       text-align: center;
@@ -589,13 +550,10 @@
   <div class="header">
     <h1><span>WK 2026</span> Stats Dashboard</h1>
     <div class="header-right">
-      <span class="last-updated" id="lastUpdated">Nog geen data</span>
-      <button class="btn btn-secondary" id="btnScrapeMatch" onclick="showAddMatch()">
-        + Wedstrijd toevoegen
-      </button>
-      <button class="btn btn-primary" id="btnScrape" onclick="scrapeAll()">
+      <span class="last-updated" id="lastUpdated">Laden...</span>
+      <button class="btn btn-primary" id="btnRefresh" onclick="forceRefresh()">
         <span class="spinner"></span>
-        Ververs alles
+        Ververs
       </button>
     </div>
   </div>
@@ -621,18 +579,6 @@
       </div>
       <div class="legend-item">
         <span class="legend-dot higher"></span> Hoogste waarde
-      </div>
-    </div>
-
-    <div id="addMatchSection" style="display:none" class="add-match">
-      <h3>Voeg een specifieke wedstrijd toe via Opta URL</h3>
-      <div class="add-match-form">
-        <input type="text" id="matchUrlInput"
-          placeholder="https://optaplayerstats.statsperform.com/en_GB/soccer/.../match/...">
-        <button class="btn btn-primary" id="btnAddMatch" onclick="scrapeMatch()">
-          <span class="spinner"></span>
-          Ophalen
-        </button>
       </div>
     </div>
 
@@ -766,15 +712,8 @@
       if (!allMatches || allMatches.length === 0) {
         list.innerHTML = `
           <div class="empty-state">
-            <h2>Nog geen wedstrijddata</h2>
-            <p>
-              Klik op "Ververs alles" om wedstrijden van het WK 2026 op te halen,<br>
-              of voeg een specifieke wedstrijd toe via de URL.
-            </p>
-            <button class="btn btn-primary" onclick="scrapeAll()">
-              <span class="spinner"></span>
-              Start eerste scrape
-            </button>
+            <h2>Data wordt geladen...</h2>
+            <p>De eerste keer laden kan even duren terwijl alle wedstrijden worden opgehaald.</p>
           </div>
         `;
         return;
@@ -871,52 +810,16 @@
 
     // ---- Actions ----
 
-    function showAddMatch() {
-      const section = document.getElementById("addMatchSection");
-      section.style.display = section.style.display === "none" ? "block" : "none";
-    }
-
-    async function scrapeAll() {
-      const btn = document.getElementById("btnScrape");
+    async function forceRefresh() {
+      const btn = document.getElementById("btnRefresh");
       btn.classList.add("loading");
       btn.disabled = true;
 
       try {
-        const res = await fetch("/api/scrape", { method: "POST" });
+        const res = await fetch("/api/refresh", { method: "POST" });
         const data = await res.json();
         if (data.success) {
-          showToast(`${data.matchCount} wedstrijden opgehaald!`, "success");
-          await fetchStats();
-        } else {
-          showToast(`Fout: ${data.error}`, "error");
-        }
-      } catch (e) {
-        showToast(`Fout: ${e.message}`, "error");
-      } finally {
-        btn.classList.remove("loading");
-        btn.disabled = false;
-      }
-    }
-
-    async function scrapeMatch() {
-      const input = document.getElementById("matchUrlInput");
-      const url = input.value.trim();
-      if (!url) return;
-
-      const btn = document.getElementById("btnAddMatch");
-      btn.classList.add("loading");
-      btn.disabled = true;
-
-      try {
-        const res = await fetch("/api/scrape-match", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          showToast("Wedstrijd opgehaald!", "success");
-          input.value = "";
+          showToast(`${data.matchCount} wedstrijden ververst!`, "success");
           await fetchStats();
         } else {
           showToast(`Fout: ${data.error}`, "error");
@@ -937,13 +840,6 @@
         toast.classList.remove("show");
       }, 3000);
     }
-
-    // Enter key in URL input
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && document.activeElement?.id === "matchUrlInput") {
-        scrapeMatch();
-      }
-    });
   </script>
 
 </body>

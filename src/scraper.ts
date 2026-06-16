@@ -1,10 +1,5 @@
-import * as fs from "fs";
-import * as path from "path";
 import config from "./config";
 import { MatchData, PlayerStat, ScrapedData, StatType } from "./types";
-
-const DATA_DIR = path.join(__dirname, "..", "data");
-const DATA_FILE = path.join(DATA_DIR, "stats.json");
 
 const ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world";
 
@@ -311,39 +306,18 @@ async function enrichWithStats(match: MatchData): Promise<MatchData> {
 }
 
 // ==============================
-//  Data Persistence
-// ==============================
-
-function saveData(data: ScrapedData): void {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf-8");
-  console.log(`\nData saved to ${DATA_FILE}`);
-}
-
-export function loadData(): ScrapedData | null {
-  if (!fs.existsSync(DATA_FILE)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(DATA_FILE, "utf-8")) as ScrapedData;
-  } catch {
-    return null;
-  }
-}
-
-// ==============================
 //  Public API
 // ==============================
 
 /**
- * Haal alle wedstrijden op via ESPN API.
+ * Haal alle wedstrijden op via de ESPN API.
+ * Geen disk I/O - caching wordt door de server afgehandeld.
  */
-export async function scrapeAll(): Promise<ScrapedData> {
-  console.log("=== WK 2026 Stats (ESPN API) ===");
-  console.log(`Stats: ${config.enabledStats.join(", ")}\n`);
+export async function fetchAllMatches(): Promise<ScrapedData> {
+  console.log(`Fetching WK 2026 data from ESPN API...`);
 
   const events = await fetchScoreboard();
-  console.log(`Found ${events.length} matches on scoreboard\n`);
+  console.log(`Found ${events.length} matches\n`);
 
   const matches: MatchData[] = [];
 
@@ -351,138 +325,18 @@ export async function scrapeAll(): Promise<ScrapedData> {
     const match = parseBasicMatch(event);
     if (!match) continue;
 
-    // Alleen stats ophalen voor wedstrijden die al gespeeld zijn of live zijn
+    // Alleen detail-stats ophalen voor gespeelde of live wedstrijden
     if (match.status !== "Upcoming") {
       await enrichWithStats(match);
-    } else {
-      console.log(
-        `  ${match.homeTeam.teamName} vs ${match.awayTeam.teamName} [${match.status}] - skipping stats`
-      );
     }
 
     matches.push(match);
   }
 
-  const result: ScrapedData = {
+  console.log(`Done: ${matches.length} matches (${matches.filter(m => m.status !== "Upcoming").length} with stats)`);
+
+  return {
     lastUpdated: new Date().toISOString(),
     matches,
   };
-
-  saveData(result);
-  console.log(`\nDone! ${matches.length} matches fetched.`);
-  return result;
-}
-
-/**
- * Haal een specifieke wedstrijd op via ESPN event ID of URL.
- */
-export async function scrapeSingleMatch(input: string): Promise<MatchData | null> {
-  // Extract event ID uit URL of gebruik direct
-  let eventId = input.trim();
-  const urlMatch = input.match(/gameId\/(\d+)/);
-  if (urlMatch) {
-    eventId = urlMatch[1];
-  }
-  // Als het puur een nummer is, gebruik het als event ID
-  if (!/^\d+$/.test(eventId)) {
-    console.log(`Invalid event ID: ${eventId}`);
-    return null;
-  }
-
-  console.log(`Fetching match ${eventId} from ESPN...`);
-
-  try {
-    const summary = await fetchMatchSummary(eventId);
-    const header = summary.header;
-
-    if (!header) {
-      console.log("No match data found");
-      return null;
-    }
-
-    const competition = header.competitions?.[0];
-    const competitors = competition?.competitors || [];
-    const home = competitors.find((c: any) => c.homeAway === "home") || competitors[0];
-    const away = competitors.find((c: any) => c.homeAway === "away") || competitors[1];
-
-    if (!home || !away) return null;
-
-    const statusType = competition?.status?.type;
-    let status = "Upcoming";
-    if (statusType?.completed) status = "FT";
-    else if (statusType?.state === "in") status = "Live";
-
-    const homeScore = home.score || "0";
-    const awayScore = away.score || "0";
-
-    const match: MatchData = {
-      matchId: eventId,
-      matchUrl: `https://www.espn.com/soccer/match/_/gameId/${eventId}`,
-      homeTeam: {
-        teamName: home.team?.displayName || "Unknown",
-        stats: {},
-        players: {},
-      },
-      awayTeam: {
-        teamName: away.team?.displayName || "Unknown",
-        stats: {},
-        players: {},
-      },
-      score: `${homeScore} - ${awayScore}`,
-      date: new Date(header.gameDate || "").toLocaleDateString("en-GB", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }),
-      status,
-      competition: config.tournamentName,
-    };
-
-    // Team stats toevoegen
-    const boxscoreTeams = summary.boxscore?.teams || [];
-    for (const espnTeam of boxscoreTeams) {
-      const teamName = espnTeam.team?.displayName || "";
-      const stats = parseTeamStats(espnTeam);
-
-      if (teamName === match.homeTeam.teamName) {
-        match.homeTeam.stats = stats;
-      } else if (teamName === match.awayTeam.teamName) {
-        match.awayTeam.stats = stats;
-      }
-    }
-
-    // Per-speler stats uit rosters
-    const rosters = summary.rosters || [];
-    for (const roster of rosters) {
-      const teamName = roster.team?.displayName || "";
-      const players = parsePlayerStats(roster.roster || []);
-
-      if (teamName === match.homeTeam.teamName) {
-        match.homeTeam.players = players;
-      } else if (teamName === match.awayTeam.teamName) {
-        match.awayTeam.players = players;
-      }
-    }
-
-    // Merge met bestaande data
-    const existing = loadData() || { lastUpdated: "", matches: [] };
-    const idx = existing.matches.findIndex((m) => m.matchId === match.matchId);
-    if (idx >= 0) {
-      existing.matches[idx] = match;
-    } else {
-      existing.matches.push(match);
-    }
-    existing.lastUpdated = new Date().toISOString();
-    saveData(existing);
-
-    return match;
-  } catch (err: any) {
-    console.error(`Failed to fetch match: ${err.message}`);
-    return null;
-  }
-}
-
-// Direct uitvoeren
-if (require.main === module) {
-  scrapeAll().catch(console.error);
 }
