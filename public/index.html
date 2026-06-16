@@ -677,10 +677,54 @@
     let allMatches = [];
     let activeTeams = new Set();
     let dateFilter = "all"; // "all" | "today" | "live"
+    let hasHashOverride = false;
+
+    // ---- URL Hash (shareable filters) ----
+
+    function parseHash() {
+      const hash = location.hash.replace(/^#/, "");
+      if (!hash) return null;
+      const params = new URLSearchParams(hash);
+      const result = {};
+      if (params.has("teams")) {
+        result.teams = params.get("teams").split(",").map(t => decodeURIComponent(t.trim())).filter(Boolean);
+      }
+      if (params.has("date")) {
+        const d = params.get("date");
+        if (["all", "today", "live"].includes(d)) result.date = d;
+      }
+      return result.teams || result.date ? result : null;
+    }
+
+    function updateHash() {
+      const parts = [];
+      // Only encode teams if not the full default set
+      if (appConfig) {
+        const defaultSet = new Set(appConfig.defaultFollowedTeams);
+        const isDefault = activeTeams.size === defaultSet.size &&
+          [...activeTeams].every(t => defaultSet.has(t));
+        if (!isDefault) {
+          parts.push("teams=" + [...activeTeams].map(t => encodeURIComponent(t)).join(","));
+        }
+      }
+      if (dateFilter !== "all") {
+        parts.push("date=" + dateFilter);
+      }
+      const newHash = parts.length > 0 ? "#" + parts.join("&") : "";
+      if (location.hash !== newHash) {
+        history.replaceState(null, "", newHash || location.pathname);
+      }
+    }
 
     // ---- LocalStorage ----
 
     function loadActiveTeams(defaultTeams) {
+      // URL hash takes priority
+      const hashData = parseHash();
+      if (hashData && hashData.teams) {
+        hasHashOverride = true;
+        return new Set(hashData.teams);
+      }
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         try {
@@ -691,8 +735,15 @@
       return new Set(defaultTeams);
     }
 
+    function loadDateFilter() {
+      const hashData = parseHash();
+      if (hashData && hashData.date) return hashData.date;
+      return "all";
+    }
+
     function saveActiveTeams() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify([...activeTeams]));
+      updateHash();
     }
 
     // ---- Teams bar collapse ----
@@ -706,7 +757,6 @@
     function restoreTeamsBarState() {
       const collapsed = localStorage.getItem(STORAGE_KEY_COLLAPSED);
       const bar = document.getElementById("teamsBar");
-      // Default collapsed
       if (collapsed === "0") {
         bar.classList.remove("collapsed");
       } else {
@@ -721,6 +771,22 @@
       fetchStats();
     });
 
+    // Handle back/forward navigation
+    window.addEventListener("hashchange", () => {
+      const hashData = parseHash();
+      if (hashData) {
+        if (hashData.teams) {
+          activeTeams = new Set(hashData.teams);
+          if (appConfig) renderTeamFilters(appConfig.allTeams);
+        }
+        if (hashData.date) {
+          dateFilter = hashData.date;
+          updateDateFilterUI();
+        }
+        renderFilteredMatches();
+      }
+    });
+
     async function fetchStats() {
       try {
         const res = await fetch("/api/stats");
@@ -729,9 +795,12 @@
         allMatches = data.matches || [];
 
         activeTeams = loadActiveTeams(appConfig.defaultFollowedTeams);
+        dateFilter = loadDateFilter();
 
         renderTeamFilters(appConfig.allTeams);
+        updateDateFilterUI();
         renderFilteredMatches();
+        updateHash();
 
         if (data.lastUpdated) {
           const date = new Date(data.lastUpdated);
@@ -795,11 +864,16 @@
 
     function setDateFilter(filter) {
       dateFilter = filter;
+      updateDateFilterUI();
+      updateHash();
+      renderFilteredMatches();
+    }
+
+    function updateDateFilterUI() {
       document.querySelectorAll(".filter-pill").forEach((el) => el.classList.remove("active"));
       document.getElementById(
-        filter === "all" ? "filterAll" : filter === "today" ? "filterToday" : "filterLive"
+        dateFilter === "today" ? "filterToday" : dateFilter === "live" ? "filterLive" : "filterAll"
       ).classList.add("active");
-      renderFilteredMatches();
     }
 
     function getTodayString() {
@@ -813,7 +887,6 @@
       if (dateFilter === "live") {
         return match.status.toLowerCase().includes("live");
       }
-      // "today"
       return match.date === getTodayString();
     }
 
