@@ -4,6 +4,8 @@
  * update de STAT_LABELS mapping.
  */
 export type StatType =
+  | "goals"
+  | "assists"
   | "totalShots"
   | "shotsOnTarget"
   | "shotsOffTarget"
@@ -23,6 +25,8 @@ export type StatType =
  * Key = onze StatType, Value = tekst op de website.
  */
 export const STAT_LABELS: Record<StatType, string> = {
+  goals: "Goals",
+  assists: "Assists",
   totalShots: "Total Shots",
   shotsOnTarget: "Shots On Target",
   shotsOffTarget: "Shots Off Target",
@@ -42,6 +46,8 @@ export const STAT_LABELS: Record<StatType, string> = {
  * Nederlandse labels voor het dashboard
  */
 export const STAT_LABELS_NL: Record<StatType, string> = {
+  goals: "Doelpunten",
+  assists: "Assists",
   totalShots: "Schoten (totaal)",
   shotsOnTarget: "Schoten op doel",
   shotsOffTarget: "Schoten naast",

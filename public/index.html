@@ -655,7 +655,7 @@
     <div class="match-toolbar">
       <div class="match-filters">
         <span class="filter-pill active" id="filterAll" onclick="setDateFilter('all')">Alle</span>
-        <span class="filter-pill" id="filterToday" onclick="setDateFilter('today')">Vandaag</span>
+        <span class="filter-pill" id="filterNow" onclick="setDateFilter('now')">Vandaag/Morgen</span>
         <span class="filter-pill" id="filterLive" onclick="setDateFilter('live')">Live</span>
       </div>
       <div class="legend">
@@ -691,7 +691,7 @@
       }
       if (params.has("date")) {
         const d = params.get("date");
-        if (["all", "today", "live"].includes(d)) result.date = d;
+        if (["all", "now", "live"].includes(d)) result.date = d;
       }
       return result.teams || result.date ? result : null;
     }
@@ -872,12 +872,14 @@
     function updateDateFilterUI() {
       document.querySelectorAll(".filter-pill").forEach((el) => el.classList.remove("active"));
       document.getElementById(
-        dateFilter === "today" ? "filterToday" : dateFilter === "live" ? "filterLive" : "filterAll"
+        dateFilter === "now" ? "filterNow" : dateFilter === "live" ? "filterLive" : "filterAll"
       ).classList.add("active");
     }
 
-    function getTodayString() {
-      return new Date().toLocaleDateString("en-GB", {
+    function getDateString(daysFromNow) {
+      const d = new Date();
+      d.setDate(d.getDate() + daysFromNow);
+      return d.toLocaleDateString("en-GB", {
         day: "numeric", month: "short", year: "numeric"
       });
     }
@@ -887,7 +889,10 @@
       if (dateFilter === "live") {
         return match.status.toLowerCase().includes("live");
       }
-      return match.date === getTodayString();
+      // "now" = today + tomorrow
+      const today = getDateString(0);
+      const tomorrow = getDateString(1);
+      return match.date === today || match.date === tomorrow;
     }
 
     // ---- Match Rendering ----
@@ -916,8 +921,8 @@
       if (matches.length === 0) {
         const msg = dateFilter === "live"
           ? "Geen live wedstrijden op dit moment."
-          : dateFilter === "today"
-          ? "Geen wedstrijden vandaag voor geselecteerde teams."
+          : dateFilter === "now"
+          ? "Geen wedstrijden vandaag/morgen voor geselecteerde teams."
           : "Geen wedstrijden voor geselecteerde teams.<br>Selecteer teams of klik \"Alles aan\".";
         list.innerHTML = `<div class="no-results">${msg}</div>`;
         return;

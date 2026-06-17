@@ -23,6 +23,8 @@ const ESPN_STAT_MAP: Record<string, StatType> = {
  * Deze komen uit de rosters[].roster[].stats[] array.
  */
 const ESPN_PLAYER_STAT_MAP: Record<string, StatType> = {
+  totalGoals: "goals",
+  goalAssists: "assists",
   totalShots: "totalShots",
   shotsOnTarget: "shotsOnTarget",
 };
@@ -272,6 +274,19 @@ async function enrichWithStats(match: MatchData): Promise<MatchData> {
     ) {
       match.homeTeam.players = parsePlayerStats(rosters[0].roster || []);
       match.awayTeam.players = parsePlayerStats(rosters[1].roster || []);
+    }
+
+    // Derive team-level goals/assists totals from player data
+    for (const team of [match.homeTeam, match.awayTeam]) {
+      for (const stat of ["goals", "assists"] as StatType[]) {
+        const playerList = team.players[stat];
+        if (playerList && playerList.length > 0) {
+          const total = playerList.reduce((sum, p) => sum + p.value, 0);
+          team.stats[stat] = String(total);
+        } else if (!team.stats[stat]) {
+          team.stats[stat] = "0";
+        }
+      }
     }
 
     // Log

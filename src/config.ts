@@ -83,6 +83,8 @@ const config: AppConfig = {
 
   // ---- Statistieken om te tonen ----
   enabledStats: [
+    "goals",
+    "assists",
     "totalShots",
     "shotsOnTarget",
     "possession",
