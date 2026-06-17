@@ -106,9 +106,16 @@ export interface ScrapedData {
 /**
  * App configuratie
  */
+/**
+ * Groep mapping: letter -> teams
+ */
+export type GroupMap = Record<string, string[]>;
+
 export interface AppConfig {
-  /** Alle landen die meedoen aan het toernooi */
+  /** Alle landen die meedoen aan het toernooi (alfabetisch) */
   allTeams: string[];
+  /** Groep-indeling: letter -> team namen */
+  groups: GroupMap;
   /** Landen die standaard aan staan in het filter (als er nog geen localStorage is) */
   defaultFollowedTeams: string[];
   /** Welke statistieken tonen in het dashboard */

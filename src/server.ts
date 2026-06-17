@@ -56,6 +56,7 @@ app.get("/api/stats", async (_req, res) => {
       matches: data.matches,
       config: {
         allTeams: config.allTeams,
+        groups: config.groups,
         defaultFollowedTeams: config.defaultFollowedTeams,
         enabledStats: config.enabledStats,
         statLabels: STAT_LABELS,
@@ -72,6 +73,7 @@ app.get("/api/stats", async (_req, res) => {
         matches: cache.data.matches,
         config: {
           allTeams: config.allTeams,
+          groups: config.groups,
           defaultFollowedTeams: config.defaultFollowedTeams,
           enabledStats: config.enabledStats,
           statLabels: STAT_LABELS,

@@ -1,77 +1,33 @@
-import { AppConfig, StatType } from "./types";
+import { AppConfig, GroupMap, StatType } from "./types";
 
 /**
- * ============================================
- *  CONFIGURATIE - PAS DIT AAN NAAR WENS
- * ============================================
+ * WK 2026 groepen (team namen exact zoals ESPN API ze noemt)
  */
+const groups: GroupMap = {
+  A: ["Mexico", "Czechia", "South Korea", "South Africa"],
+  B: ["Canada", "Bosnia-Herzegovina", "Switzerland", "Qatar"],
+  C: ["Brazil", "Scotland", "Haiti", "Morocco"],
+  D: ["Paraguay", "Türkiye", "Australia", "United States"],
+  E: ["Ecuador", "Germany", "Ivory Coast", "Curaçao"],
+  F: ["Netherlands", "Sweden", "Japan", "Tunisia"],
+  G: ["Belgium", "Iran", "Egypt", "New Zealand"],
+  H: ["Spain", "Uruguay", "Saudi Arabia", "Cape Verde"],
+  I: ["Norway", "France", "Senegal", "Iraq"],
+  J: ["Argentina", "Austria", "Algeria", "Jordan"],
+  K: ["Colombia", "Portugal", "Uzbekistan", "Congo DR"],
+  L: ["England", "Croatia", "Panama", "Ghana"],
+};
+
+/** Alle 48 teams alfabetisch */
+const allTeams = Object.values(groups).flat().sort((a, b) =>
+  a.localeCompare(b, "en", { sensitivity: "base" })
+);
 
 const config: AppConfig = {
-  // ---- Alle WK 2026 deelnemers (48 landen) ----
-  allTeams: [
-    // Groep A
-    "Mexico",
-    "Czech Republic",
-    "South Korea",
-    "South Africa",
-    // Groep B
-    "Canada",
-    "Bosnia and Herzegovina",
-    "Qatar",
-    "Switzerland",
-    // Groep C
-    "Brazil",
-    "Morocco",
-    "Haiti",
-    "Scotland",
-    // Groep D
-    "United States",
-    "Paraguay",
-    "Australia",
-    "Turkey",
-    // Groep E
-    "Germany",
-    "Curacao",
-    "Ivory Coast",
-    "Ecuador",
-    // Groep F
-    "Netherlands",
-    "Japan",
-    "Sweden",
-    "Tunisia",
-    // Groep G
-    "Belgium",
-    "Egypt",
-    "Iran",
-    "New Zealand",
-    // Groep H
-    "Spain",
-    "Cape Verde",
-    "Saudi Arabia",
-    "Uruguay",
-    // Groep I
-    "France",
-    "Panama",
-    "Cameroon",
-    "Indonesia",
-    // Groep J
-    "Argentina",
-    "Venezuela",
-    "Nigeria",
-    "Algeria",
-    // Groep K
-    "England",
-    "Senegal",
-    "Colombia",
-    "Slovenia",
-    // Groep L
-    "Portugal",
-    "Serbia",
-    "Italy",
-    "Peru",
-  ],
+  allTeams,
+  groups,
 
-  // ---- Standaard geselecteerde teams (als er geen localStorage is) ----
+  // ---- Standaard geselecteerde teams ----
   defaultFollowedTeams: [
     "Netherlands",
     "Mexico",
@@ -105,7 +61,7 @@ const config: AppConfig = {
   // ---- Server instellingen ----
   port: parseInt(process.env.PORT || "3333", 10),
 
-  // ---- Browser instellingen (niet meer nodig, maar bewaard voor compatibiliteit) ----
+  // ---- Browser instellingen ----
   headless: true,
 };
 

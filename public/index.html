@@ -237,6 +237,54 @@
       color: var(--text-muted);
     }
 
+    /* ---- Group filter ---- */
+    .group-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      margin-top: 0.35rem;
+      overflow: hidden;
+      transition: max-height 0.25s ease, opacity 0.2s ease, margin 0.25s ease;
+      max-height: 100px;
+      opacity: 1;
+    }
+
+    .teams-bar.collapsed .group-filters {
+      max-height: 0;
+      opacity: 0;
+      margin-top: 0;
+    }
+
+    .group-pill {
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      font-size: 0.6rem;
+      font-weight: 700;
+      cursor: pointer;
+      border: 1.5px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      transition: all 0.12s ease;
+      user-select: none;
+      letter-spacing: 0.03em;
+    }
+
+    .group-pill:hover {
+      border-color: var(--text-muted);
+      color: var(--text);
+    }
+
+    .group-pill.active {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+
+    .group-pill.active:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+    }
+
     /* ---- Match filters toolbar ---- */
     .match-toolbar {
       display: flex;
@@ -648,6 +696,7 @@
         </div>
       </div>
     </div>
+    <div class="group-filters" id="groupFilters"></div>
     <div class="teams-grid" id="teamsGrid"></div>
   </div>
 
@@ -777,7 +826,10 @@
       if (hashData) {
         if (hashData.teams) {
           activeTeams = new Set(hashData.teams);
-          if (appConfig) renderTeamFilters(appConfig.allTeams);
+          if (appConfig) {
+            renderTeamFilters(appConfig.allTeams);
+            updateGroupPills();
+          }
         }
         if (hashData.date) {
           dateFilter = hashData.date;
@@ -797,6 +849,7 @@
         activeTeams = loadActiveTeams(appConfig.defaultFollowedTeams);
         dateFilter = loadDateFilter();
 
+        renderGroupFilters();
         renderTeamFilters(appConfig.allTeams);
         updateDateFilterUI();
         renderFilteredMatches();
@@ -825,6 +878,48 @@
         grid.appendChild(tag);
       });
       updateFilterCount();
+      updateGroupPills();
+    }
+
+    function renderGroupFilters() {
+      if (!appConfig || !appConfig.groups) return;
+      const container = document.getElementById("groupFilters");
+      container.innerHTML = "";
+      for (const letter of Object.keys(appConfig.groups).sort()) {
+        const pill = document.createElement("span");
+        pill.className = "group-pill";
+        pill.textContent = letter;
+        pill.id = `group-${letter}`;
+        pill.onclick = () => toggleGroup(letter);
+        container.appendChild(pill);
+      }
+      updateGroupPills();
+    }
+
+    function toggleGroup(letter) {
+      if (!appConfig || !appConfig.groups) return;
+      const groupTeams = appConfig.groups[letter] || [];
+      const allActive = groupTeams.every(t => activeTeams.has(t));
+      if (allActive) {
+        // Deselect all in group
+        groupTeams.forEach(t => activeTeams.delete(t));
+      } else {
+        // Select all in group
+        groupTeams.forEach(t => activeTeams.add(t));
+      }
+      saveActiveTeams();
+      renderTeamFilters(appConfig.allTeams);
+      renderFilteredMatches();
+    }
+
+    function updateGroupPills() {
+      if (!appConfig || !appConfig.groups) return;
+      for (const [letter, teams] of Object.entries(appConfig.groups)) {
+        const pill = document.getElementById(`group-${letter}`);
+        if (!pill) continue;
+        const allActive = teams.every(t => activeTeams.has(t));
+        pill.className = `group-pill ${allActive ? "active" : ""}`;
+      }
     }
 
     function toggleTeam(team, el) {
@@ -837,6 +932,7 @@
       }
       saveActiveTeams();
       updateFilterCount();
+      updateGroupPills();
       renderFilteredMatches();
     }
 
