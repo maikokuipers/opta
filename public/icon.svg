@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a1d27"/>
+      <stop offset="100%" stop-color="#0f1117"/>
+    </linearGradient>
+    <linearGradient id="ballGrad" x1="0.2" y1="0.1" x2="0.8" y2="0.9">
+      <stop offset="0%" stop-color="#f0f0f0"/>
+      <stop offset="100%" stop-color="#d4d4d8"/>
+    </linearGradient>
+    <radialGradient id="shine" cx="0.35" cy="0.3" r="0.5">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.4)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+  <!-- Outer glow ring -->
+  <circle cx="256" cy="248" r="170" fill="none" stroke="#6366f1" stroke-width="3" opacity="0.3"/>
+  <!-- Football body -->
+  <circle cx="256" cy="248" r="155" fill="url(#ballGrad)"/>
+  <!-- Pentagon patches (classic football pattern) - dark indigo -->
+  <!-- Center pentagon -->
+  <polygon points="256,198 280,215 271,243 241,243 232,215" fill="#6366f1"/>
+  <!-- Top pentagon -->
+  <polygon points="256,118 280,135 271,163 241,163 232,135" fill="#6366f1"/>
+  <!-- Top-right pentagon -->
+  <polygon points="340,168 364,185 355,213 325,213 316,185" fill="#6366f1"/>
+  <!-- Top-left pentagon -->
+  <polygon points="172,168 196,185 187,213 157,213 148,185" fill="#6366f1"/>
+  <!-- Bottom-right pentagon -->
+  <polygon points="320,288 344,305 335,333 305,333 296,305" fill="#6366f1"/>
+  <!-- Bottom-left pentagon -->
+  <polygon points="192,288 216,305 207,333 177,333 168,305" fill="#6366f1"/>
+  <!-- Bottom pentagon -->
+  <polygon points="256,348 280,365 271,393 241,393 232,365" fill="#6366f1"/>
+  <!-- Seam lines connecting pentagons -->
+  <g stroke="#6366f1" stroke-width="2.5" fill="none" opacity="0.5">
+    <!-- Center to top -->
+    <line x1="256" y1="198" x2="256" y2="163"/>
+    <!-- Center top-left to top-left -->
+    <line x1="232" y1="215" x2="196" y2="213"/>
+    <!-- Center top-right to top-right -->
+    <line x1="280" y1="215" x2="316" y2="213"/>
+    <!-- Center bottom-left to bottom-left -->
+    <line x1="241" y1="243" x2="216" y2="288"/>
+    <!-- Center bottom-right to bottom-right -->
+    <line x1="271" y1="243" x2="296" y2="288"/>
+    <!-- Top to top-right -->
+    <line x1="280" y1="135" x2="340" y2="168"/>
+    <!-- Top to top-left -->
+    <line x1="232" y1="135" x2="196" y2="168"/>
+    <!-- Bottom-left to bottom -->
+    <line x1="216" y1="305" x2="241" y2="348"/>
+    <!-- Bottom-right to bottom -->
+    <line x1="296" y1="305" x2="271" y2="348"/>
+    <!-- Top-right to bottom-right -->
+    <line x1="355" y1="213" x2="344" y2="288"/>
+    <!-- Top-left to bottom-left -->
+    <line x1="157" y1="213" x2="168" y2="288"/>
+  </g>
+  <!-- Shine overlay -->
+  <circle cx="256" cy="248" r="155" fill="url(#shine)"/>
+  <!-- 2026 text at bottom -->
+  <text x="256" y="468" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif" font-size="52" font-weight="800" fill="#6366f1" letter-spacing="6">2026</text>
+</svg>

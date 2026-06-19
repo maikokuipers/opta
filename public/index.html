@@ -2,7 +2,14 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#6366f1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="WK 2026">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon-192.png">
   <title>WK 2026 Stats Dashboard</title>
   <style>
     :root {
@@ -28,6 +35,68 @@
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+      overscroll-behavior-y: contain;
+    }
+
+    /* ---- Pull-to-refresh ---- */
+    .ptr-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 150;
+      display: flex;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    .ptr-indicator {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform: translateY(-50px);
+      transition: transform 0.2s ease, opacity 0.2s ease;
+      opacity: 0;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    .ptr-indicator.visible {
+      opacity: 1;
+    }
+
+    .ptr-indicator.refreshing {
+      opacity: 1;
+      transform: translateY(12px);
+    }
+
+    .ptr-spinner {
+      width: 18px;
+      height: 18px;
+      border: 2.5px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+    }
+
+    .ptr-indicator.refreshing .ptr-spinner {
+      animation: spin 0.6s linear infinite;
+    }
+
+    .ptr-arrow {
+      display: block;
+      transition: transform 0.2s ease;
+    }
+
+    .ptr-indicator.ready .ptr-arrow {
+      transform: rotate(180deg);
+    }
+
+    .ptr-indicator.refreshing .ptr-arrow {
+      display: none;
     }
 
     /* ---- Header ---- */
@@ -671,6 +740,16 @@
 </head>
 <body>
 
+  <div class="ptr-container" id="ptrContainer">
+    <div class="ptr-indicator" id="ptrIndicator">
+      <svg class="ptr-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <polyline points="19 12 12 19 5 12"></polyline>
+      </svg>
+      <div class="ptr-spinner" style="display:none"></div>
+    </div>
+  </div>
+
   <div class="header">
     <h1><span>WK 2026</span> Stats</h1>
     <div class="header-right">
@@ -719,8 +798,14 @@
   <div class="toast" id="toast"></div>
 
   <script>
+    // ---- Service Worker Registration ----
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+
     const STORAGE_KEY = "opta-wk-followed-teams";
     const STORAGE_KEY_COLLAPSED = "opta-wk-teams-collapsed";
+    const STORAGE_KEY_DATE = "opta-wk-date-filter";
 
     let appConfig = null;
     let allMatches = [];
@@ -787,6 +872,8 @@
     function loadDateFilter() {
       const hashData = parseHash();
       if (hashData && hashData.date) return hashData.date;
+      const stored = localStorage.getItem(STORAGE_KEY_DATE);
+      if (stored && ["all", "now", "live"].includes(stored)) return stored;
       return "all";
     }
 
@@ -960,6 +1047,7 @@
 
     function setDateFilter(filter) {
       dateFilter = filter;
+      localStorage.setItem(STORAGE_KEY_DATE, filter);
       updateDateFilterUI();
       updateHash();
       renderFilteredMatches();
@@ -1144,6 +1232,96 @@
       toast.className = `toast ${type} show`;
       setTimeout(() => toast.classList.remove("show"), 3000);
     }
+
+    // ---- Pull-to-Refresh ----
+    (function initPullToRefresh() {
+      const indicator = document.getElementById("ptrIndicator");
+      const arrow = indicator.querySelector(".ptr-arrow");
+      const spinner = indicator.querySelector(".ptr-spinner");
+      const THRESHOLD = 80;
+
+      let startY = 0;
+      let currentY = 0;
+      let pulling = false;
+      let refreshing = false;
+
+      function getScrollTop() {
+        return window.scrollY || document.documentElement.scrollTop || 0;
+      }
+
+      document.addEventListener("touchstart", (e) => {
+        if (refreshing) return;
+        if (getScrollTop() > 5) return;
+        startY = e.touches[0].clientY;
+        pulling = true;
+      }, { passive: true });
+
+      document.addEventListener("touchmove", (e) => {
+        if (!pulling || refreshing) return;
+        currentY = e.touches[0].clientY;
+        const dy = Math.max(0, currentY - startY);
+
+        if (dy <= 0) {
+          indicator.className = "ptr-indicator";
+          indicator.style.transform = "translateY(-50px)";
+          return;
+        }
+
+        // Dampen the pull distance
+        const pull = Math.min(dy * 0.5, 120);
+        indicator.classList.add("visible");
+        indicator.style.transform = `translateY(${pull - 36}px)`;
+
+        if (dy >= THRESHOLD) {
+          indicator.classList.add("ready");
+        } else {
+          indicator.classList.remove("ready");
+        }
+      }, { passive: true });
+
+      document.addEventListener("touchend", async () => {
+        if (!pulling || refreshing) return;
+        const dy = currentY - startY;
+        pulling = false;
+
+        if (dy >= THRESHOLD) {
+          // Trigger refresh
+          refreshing = true;
+          arrow.style.display = "none";
+          spinner.style.display = "block";
+          indicator.className = "ptr-indicator refreshing";
+          indicator.style.transform = "translateY(12px)";
+
+          try {
+            const res = await fetch("/api/refresh-live", { method: "POST" });
+            const data = await res.json();
+            if (data.success) {
+              showToast(data.liveCount > 0
+                ? `${data.liveCount} live wedstrijden ververst`
+                : "Data ververst", "success");
+              await fetchStats();
+            } else {
+              showToast(`Fout: ${data.error}`, "error");
+            }
+          } catch (err) {
+            showToast(`Fout: ${err.message}`, "error");
+          } finally {
+            refreshing = false;
+            arrow.style.display = "block";
+            spinner.style.display = "none";
+            indicator.className = "ptr-indicator";
+            indicator.style.transform = "translateY(-50px)";
+          }
+        } else {
+          // Cancel
+          indicator.className = "ptr-indicator";
+          indicator.style.transform = "translateY(-50px)";
+        }
+
+        startY = 0;
+        currentY = 0;
+      }, { passive: true });
+    })();
   </script>
 </body>
 </html>
